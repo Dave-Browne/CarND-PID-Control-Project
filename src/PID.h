@@ -9,6 +9,8 @@ public:
   double p_error = 0;
   double d_error = 0;
   double i_error = 0;
+  double total_err;
+  double best_err;
 
   /*
   * Coefficients
@@ -16,7 +18,16 @@ public:
   double Kp;
   double Kd;
   double Ki;
+  double p[3];
+  double dp[3];
 
+  /*
+  * Counters
+  */ 
+  int start_threshold;
+  int counter;
+  int tw_step;
+  int pid_var;
   double delta_t;
   double prev_time;
 
@@ -46,19 +57,20 @@ public:
   double TotalError();
 
   /*
+  * Define the desired speed.
+  */
+  double IdealSpeed(double steer);
+
+  /*
   * Update the PID coefficients using the twiddle/hill climber algorithm.
   */
-  void Twiddle(double cte, double h);
+  void Twiddle();
 
   /*
   * Update PID parameters.
   */
-  double UpdateParams(double p[3]);
+  void UpdateParams(double p[3]);
 
-  /*
-  * Calculate the new cross track error with the updated PID coefficients.
-  */
-  double predictCTE(double cte, double h);
 };
 
 #endif /* PID_H */

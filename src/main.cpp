@@ -1,4 +1,4 @@
-#include <uWS/uWS.h>
+#include "uWS/uWS.h"
 #include <iostream>
 #include "json.hpp"
 #include "PID.h"
@@ -32,11 +32,14 @@ int main()
 {
   uWS::Hub h;
 
-  PID pid;
+  PID steer_pid;
+  PID speed_pid;
   // TODO: Initialize the pid variable.
-  pid.Init(0.02, 0.01, 0.01);
+//  steer_pid.Init(0.1, 2, 0.004);
+  steer_pid.Init(0.0, 0.0, 0.0);
+  speed_pid.Init(0.0, 0.0, 0.0);
 
-  h.onMessage([&pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
+  h.onMessage([&steer_pid, &speed_pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
@@ -51,7 +54,7 @@ int main()
           double cte = std::stod(j[1]["cte"].get<std::string>());
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
-          double steer_value;
+          double steer_value, speed_ideal, throttle, time;
           /*
           * TODO: Calcuate steering value here, remember the steering value is
           * [-1, 1].
@@ -59,24 +62,31 @@ int main()
           * another PID controller to control the speed!
           */
           std::cout << "------------------------------\n";
-          //pid.delta_t = 0.006;                            // temporary value
-          double time = clock();
-          pid.delta_t = (time - pid.prev_time) / CLOCKS_PER_SEC;
-          pid.prev_time = time;
-          double h = speed * pid.delta_t;
+          time = clock();
+          steer_pid.delta_t = speed_pid.delta_t = (time - steer_pid.prev_time) / CLOCKS_PER_SEC;
+          steer_pid.prev_time = speed_pid.prev_time = time;
 
-          pid.UpdateError(cte);
-          steer_value = pid.TotalError();
-          std::cout << "Before Twiddle Kp: " << pid.Kp << " Kd: " << pid.Kd <<" Ki: " << pid.Ki << std::endl;
-//          pid.Twiddle(cte, h);
-          
+          // Steering controller
+          steer_pid.UpdateError(cte);
+          steer_pid.Twiddle();
+          steer_value = steer_pid.TotalError();
+
+          // Speed controller
+          speed_ideal = speed_pid.IdealSpeed(steer_value);
+          speed_pid.UpdateError(speed - speed_ideal);
+          speed_pid.Twiddle();
+          if (speed_pid.counter > speed_pid.start_threshold) throttle = speed_pid.TotalError();
+          else throttle = 0.3;
+
           // DEBUG
-          std::cout << "After Twiddle  Kp: " << pid.Kp << " Kd: " << pid.Kd <<" Ki: " << pid.Ki << std::endl;
-          std::cout << "CTE: " << cte << " Steering Value: " << steer_value << std::endl;
+          std::cout << "target speed = " << speed_ideal << std::endl;
+          std::cout << "Steer Kp: " << steer_pid.Kp << " Kd: " << steer_pid.Kd << " Ki: " << steer_pid.Ki << std::endl;
+          std::cout << "Speed Kp: " << speed_pid.Kp << " Kd: " << speed_pid.Kd << " Ki: " << speed_pid.Ki << std::endl;
+          std::cout << "CTE: " << cte << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
-          msgJson["throttle"] = 0.3;
+          msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
           std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
