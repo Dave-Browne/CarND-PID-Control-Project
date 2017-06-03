@@ -75,7 +75,7 @@ int main()
             std::cout << "Steering best error: " << steer_pid.best_err << std::endl;
             steer_pid.Init(steer_pid.Kp, steer_pid.Kd, steer_pid.Ki);
             speed_pid.isInitialised = false;
-            speed_pid.Init(1.0, 0.0, 0.0);
+            speed_pid.Init(0.1, 0.01, 0.0);
           }
           // Get the controller error
           steer_value = steer_pid.TotalError();
