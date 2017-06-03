@@ -9,7 +9,7 @@ public:
   double p_error = 0;
   double d_error = 0;
   double i_error = 0;
-  double total_err;
+  double accum_err;
   double best_err;
 
   /*
@@ -20,16 +20,17 @@ public:
   double Ki;
   double p[3];
   double dp[3];
+  double sum_dp;
 
   /*
-  * Counters
+  * Counters and others
   */ 
-  int start_threshold;
+  const int training_cycle = 300;   // number of steps for each twiddle run
+  const int start_threshold = 100;   // threshold after which twiddle error is calculated
   int counter;
   int tw_step;
   int pid_var;
-  double delta_t;
-  double prev_time;
+  bool isInitialised = false;
 
   /*
   * Constructor

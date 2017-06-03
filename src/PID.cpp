@@ -17,32 +17,35 @@ void PID::Init(double Kp_val, double Kd_val, double Ki_val) {
   p[0] = Kp = Kp_val;
   p[1] = Kd = Kd_val;
   p[2] = Ki = Ki_val;
-  dp[0] = (Kp==0? 0.1 : Kp/10.);
-  dp[1] = (Kd==0? 0.1 : Kd/10.);
-  dp[2] = (Ki==0? 0.1 : Ki/10.);
-  total_err = 0;
-  best_err = 1e5;
-  start_threshold = 50;         // start twiddle after threshold
+  accum_err = 0;
   counter = 0;
-  pid_var = 0;      // set twiddle to update P first
-  tw_step = 1;      // set twiddle to start at the beginning
-  prev_time = clock();
+  if (isInitialised == false) {
+    dp[0] = Kp * 10;
+    dp[1] = Kd * 10;
+    dp[2] = Ki * 10;
+    best_err = 1e5;
+    pid_var = 0;      // set twiddle to update P first
+    tw_step = 1;      // set twiddle to start at the beginning
+  }
+  isInitialised = true;
 }
 
 
 void PID::UpdateError(double cte) {
-  d_error = (cte - p_error) / delta_t;          // p_error holds the previous cte value
+  d_error = (cte - p_error);          // p_error holds the previous cte value
   p_error = cte;
-  i_error += cte * delta_t;
+  i_error += cte;
 
-  if (counter > start_threshold) total_err += cte*cte;
-  counter += 1;                     // increment the number of times car has moved
+  // Update variables for twiddle
+  if (counter > start_threshold) accum_err += cte*cte;
+  sum_dp = fabs(dp[0]) + fabs(dp[1]) + fabs(dp[2]);
+  // Increment the number of times car has moved
+  counter += 1;
 }
 
 
 double PID::TotalError() {
   double err = -Kp*p_error - Kd*d_error - Ki*i_error;
-  std::cout << "Total_error: " << err << " p_error: " << p_error << " d_error: " << d_error << " i_error: " << i_error << std::endl;
   err = (err > 1? 1:err);
   err = (err < -1? -1:err);
   return err;
@@ -51,35 +54,31 @@ double PID::TotalError() {
 
 double PID::IdealSpeed(double steer) {
   int max_speed = 50;
-  double x = max_speed - 0.9*max_speed*sqrt(fabs(steer));         // straight = fast, max turn = slow. Non-linear model.
-  if (counter < 20) x = counter;                                  // gradual acceleration
+  double x = max_speed - 0.7*max_speed*sqrt(fabs(steer));         // straight = fast, max turn = slow. Non-linear model.
   return x;
 }
 
 // The aim of twiddle is to update the PID coefficients so that cte is minimised
+// Select coefficients and run the simulator for n steps, then check if error has improved.
 void PID::Twiddle() {
 
-  if (counter > start_threshold && (fabs(dp[0])+fabs(dp[1])+fabs(dp[2]) > 1e-5)) {
+  double curr_err = accum_err / (counter - start_threshold);
 
-    double curr_err = total_err / (counter - start_threshold);
+  if (sum_dp > 1e-5) {
 
     // Cycle between P, I and D updates
     if (tw_step == 0) {
-//      std::cout << "step 0\n";
       pid_var = (pid_var + 1) % 3;
       tw_step = 1;
     }
 
     if (tw_step == 1) {
-//      std::cout << "step 1\n";
       p[pid_var] += dp[pid_var];
       UpdateParams(p);
       tw_step = 2;
     }
     else if (tw_step == 2) {
-//      std::cout << "step 2\n";
       if (curr_err < best_err) {        // CONDITION 1
-//        std::cout << "step 2.1\n";
         best_err = curr_err;
         dp[pid_var] *= 1.1;
         tw_step = 0;
@@ -87,16 +86,13 @@ void PID::Twiddle() {
         return;
       }
       else {
-//        std::cout << "step 2.2\n";
         p[pid_var] -= 2*dp[pid_var];
         UpdateParams(p);
         tw_step = 3;
       }
     }
     else if (tw_step == 3) {
-//      std::cout << "step 3\n";
       if (curr_err < best_err) {        // CONDITION 2
-//        std::cout << "step 3.1\n";
         best_err = curr_err;
         dp[pid_var] *= 1.1;
         tw_step = 0;
@@ -104,7 +100,6 @@ void PID::Twiddle() {
         return;
       }
       else {                            // CONDITION 3
-//        std::cout << "step 3.2\n";
         p[pid_var] += dp[pid_var];
         UpdateParams(p);
         dp[pid_var] *= 0.9;

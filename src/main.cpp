@@ -35,9 +35,9 @@ int main()
   PID steer_pid;
   PID speed_pid;
   // TODO: Initialize the pid variable.
-//  steer_pid.Init(0.1, 2, 0.004);
-  steer_pid.Init(0.0, 0.0, 0.0);
-  speed_pid.Init(0.0, 0.0, 0.0);
+//  steer_pid.Init(0.2, 0.3, 0.004);    //Starting coefficients
+  steer_pid.Init(1.288, 5.318, 9.6e-5);    //Twiddled coefficients
+  speed_pid.Init(0.1, 0.01, 0.0);
 
   h.onMessage([&steer_pid, &speed_pid](uWS::WebSocket<uWS::SERVER> ws, char *data, size_t length, uWS::OpCode opCode) {
     // "42" at the start of the message means there's a websocket message event.
@@ -55,40 +55,50 @@ int main()
           double speed = std::stod(j[1]["speed"].get<std::string>());
           double angle = std::stod(j[1]["steering_angle"].get<std::string>());
           double steer_value, speed_ideal, throttle, time;
+          bool training = false;
           /*
           * TODO: Calcuate steering value here, remember the steering value is
           * [-1, 1].
           * NOTE: Feel free to play around with the throttle and speed. Maybe use
           * another PID controller to control the speed!
           */
-          std::cout << "------------------------------\n";
-          time = clock();
-          steer_pid.delta_t = speed_pid.delta_t = (time - steer_pid.prev_time) / CLOCKS_PER_SEC;
-          steer_pid.prev_time = speed_pid.prev_time = time;
 
           // Steering controller
           steer_pid.UpdateError(cte);
-          steer_pid.Twiddle();
+          // Reset Simulator and controllers if error is high
+          if (steer_pid.counter > steer_pid.training_cycle && steer_pid.sum_dp > 1e-5 && training) {
+            std::string msg = "42[\"reset\",{}]";
+            ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
+            steer_pid.Twiddle();
+            std::cout << "------------------------------\n";
+            std::cout << "Steer Kp: " << steer_pid.Kp << " Kd: " << steer_pid.Kd << " Ki: " << steer_pid.Ki << std::endl;
+            std::cout << "Steering best error: " << steer_pid.best_err << std::endl;
+            steer_pid.Init(steer_pid.Kp, steer_pid.Kd, steer_pid.Ki);
+            speed_pid.isInitialised = false;
+            speed_pid.Init(1.0, 0.0, 0.0);
+          }
+          // Get the controller error
           steer_value = steer_pid.TotalError();
-
+            
           // Speed controller
           speed_ideal = speed_pid.IdealSpeed(steer_value);
           speed_pid.UpdateError(speed - speed_ideal);
-          speed_pid.Twiddle();
-          if (speed_pid.counter > speed_pid.start_threshold) throttle = speed_pid.TotalError();
-          else throttle = 0.3;
+//          speed_pid.Twiddle();
+//          std::cout << "Speed Kp: " << speed_pid.Kp << " Kd: " << speed_pid.Kd << " Ki: " << speed_pid.Ki << std::endl;
+          throttle = speed_pid.TotalError();
 
           // DEBUG
-          std::cout << "target speed = " << speed_ideal << std::endl;
-          std::cout << "Steer Kp: " << steer_pid.Kp << " Kd: " << steer_pid.Kd << " Ki: " << steer_pid.Ki << std::endl;
-          std::cout << "Speed Kp: " << speed_pid.Kp << " Kd: " << speed_pid.Kd << " Ki: " << speed_pid.Ki << std::endl;
-          std::cout << "CTE: " << cte << std::endl;
+//          std::cout << "target speed = " << speed_ideal << " counter " << speed_pid.counter << std::endl;
+//          std::cout << "Steer Kp: " << steer_pid.Kp << " Kd: " << steer_pid.Kd << " Ki: " << steer_pid.Ki << std::endl;
+//          std::cout << "Speed Kp: " << speed_pid.Kp << " Kd: " << speed_pid.Kd << " Ki: " << speed_pid.Ki << std::endl;
+//          std::cout << "CTE: " << cte << std::endl;
+//          std::cout << "Steering best error: " << steer_pid.best_err << std::endl;
 
           json msgJson;
           msgJson["steering_angle"] = steer_value;
           msgJson["throttle"] = throttle;
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+//          std::cout << msg << std::endl;
           ws.send(msg.data(), msg.length(), uWS::OpCode::TEXT);
         }
       } else {
